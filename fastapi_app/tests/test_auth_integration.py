@@ -1,5 +1,8 @@
+from datetime import datetime, timedelta, timezone
+
 from jose import jwt
 
+from app import main as app_main
 from app.core.config import settings
 
 
@@ -53,3 +56,45 @@ def test_login_rate_limit_blocks_abuse(client):
 def test_protected_prime_endpoint_requires_bearer_token(client):
     response = client.get("/check-prime", params={"number": 7})
     assert response.status_code == 401
+
+
+def test_protected_prime_endpoint_rejects_invalid_token(client):
+    response = client.get("/check-prime", params={"number": 7}, headers={"Authorization": "Bearer invalid-token"})
+    assert response.status_code == 401
+
+
+def test_protected_prime_endpoint_rejects_expired_token(client):
+    expired_payload = {
+        "sub": "alice",
+        "user_id": 1,
+        "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+    }
+    expired_token = jwt.encode(expired_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    response = client.get("/check-prime", params={"number": 7}, headers={"Authorization": f"Bearer {expired_token}"})
+    assert response.status_code == 401
+
+
+def test_login_succeeds_even_if_clickhouse_event_insert_fails(client, monkeypatch):
+    def raise_insert(*args, **kwargs):
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr("app.repositories.event_repo.EventRepository.insert_login_event", raise_insert)
+
+    response = client.post("/login", json={"username": "alice", "password": "alice_password"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["event_id"] is None
+    assert len(client.dispatched_tasks) == 0
+
+
+def test_startup_continues_if_clickhouse_unavailable(monkeypatch):
+    original = app_main.get_clickhouse_client
+    monkeypatch.setattr(app_main, "get_clickhouse_client", lambda: (_ for _ in ()).throw(RuntimeError("ch down")))
+    try:
+        from fastapi.testclient import TestClient
+
+        with TestClient(app_main.app) as local_client:
+            response = local_client.get("/health")
+            assert response.status_code == 200
+    finally:
+        app_main.get_clickhouse_client = original

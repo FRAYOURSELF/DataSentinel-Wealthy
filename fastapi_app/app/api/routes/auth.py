@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis import Redis
 from sqlalchemy.orm import Session
@@ -13,6 +15,7 @@ from app.services.auth_service import AuthService
 from app.services.rate_limiter import LoginRateLimiter
 
 router = APIRouter(prefix="", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _extract_client_ip(request: Request) -> str:
@@ -34,8 +37,12 @@ def login(
     redis_client: Redis = Depends(get_redis_client),
 ):
     auth_service = AuthService(db)
-    clickhouse = get_clickhouse_client()
-    event_repo = EventRepository(clickhouse)
+    event_repo = None
+    try:
+        clickhouse = get_clickhouse_client()
+        event_repo = EventRepository(clickhouse)
+    except Exception as exc:
+        logger.warning("ClickHouse unavailable during login flow: %s", exc)
     client_ip = _extract_client_ip(request)
     request_size = int(request.headers.get("content-length", "0"))
     rate_limiter = LoginRateLimiter(redis_client)
@@ -43,14 +50,18 @@ def login(
     is_allowed, reason = rate_limiter.check_allow(client_ip, payload.username)
     if not is_allowed:
         event_id = auth_service.new_event_id()
-        event_repo.insert_login_event(
-            event_id=event_id,
-            user_id=-1,
-            username=payload.username,
-            ip_address=client_ip,
-            request_size=request_size,
-            status_code=429,
-        )
+        if event_repo:
+            try:
+                event_repo.insert_login_event(
+                    event_id=event_id,
+                    user_id=-1,
+                    username=payload.username,
+                    ip_address=client_ip,
+                    request_size=request_size,
+                    status_code=429,
+                )
+            except Exception as exc:
+                logger.warning("Failed to write rate-limit login event: %s", exc)
         raise HTTPException(status_code=429, detail=reason)
 
     user = auth_service.authenticate(payload.username, payload.password)
@@ -58,38 +69,54 @@ def login(
     if not user:
         rate_limiter.record_failure(client_ip, payload.username)
         event_id = auth_service.new_event_id()
-        event_repo.insert_login_event(
-            event_id=event_id,
-            user_id=-1,
-            username=payload.username,
-            ip_address=client_ip,
-            request_size=request_size,
-            status_code=401,
-        )
+        if event_repo:
+            try:
+                event_repo.insert_login_event(
+                    event_id=event_id,
+                    user_id=-1,
+                    username=payload.username,
+                    ip_address=client_ip,
+                    request_size=request_size,
+                    status_code=401,
+                )
+            except Exception as exc:
+                logger.warning("Failed to write failed login event: %s", exc)
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     rate_limiter.clear_failures(client_ip, payload.username)
-    previous_ip = event_repo.get_last_success_ip(user.id)
+    previous_ip = None
+    if event_repo:
+        try:
+            previous_ip = event_repo.get_last_success_ip(user.id)
+        except Exception as exc:
+            logger.warning("Failed to fetch previous login IP: %s", exc)
     different_device = previous_ip is not None and previous_ip != client_ip
     event_id = auth_service.new_event_id()
-    event_repo.insert_login_event(
-        event_id=event_id,
-        user_id=user.id,
-        username=user.username,
-        ip_address=client_ip,
-        request_size=request_size,
-        status_code=200,
-    )
+    event_logged = False
+    if event_repo:
+        try:
+            event_repo.insert_login_event(
+                event_id=event_id,
+                user_id=user.id,
+                username=user.username,
+                ip_address=client_ip,
+                request_size=request_size,
+                status_code=200,
+            )
+            event_logged = True
+        except Exception as exc:
+            logger.warning("Failed to write successful login event: %s", exc)
 
-    celery_app.send_task(
-        "worker.tasks.ip_check.check_login_ip",
-        kwargs={
-            "event_id": event_id,
-            "user_id": user.id,
-            "username": user.username,
-            "ip_address": client_ip,
-        },
-    )
+    if event_logged:
+        celery_app.send_task(
+            "worker.tasks.ip_check.check_login_ip",
+            kwargs={
+                "event_id": event_id,
+                "user_id": user.id,
+                "username": user.username,
+                "ip_address": client_ip,
+            },
+        )
 
     access_token, expires_in = create_access_token(subject=user.username, user_id=user.id)
     message = "Login successful"
@@ -99,7 +126,7 @@ def login(
         success=True,
         message=message,
         user_id=user.id,
-        event_id=event_id,
+        event_id=event_id if event_logged else None,
         access_token=access_token,
         token_type="bearer",
         expires_in=expires_in,

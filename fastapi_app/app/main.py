@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 
 from app.api.routes.auth import router as auth_router
@@ -9,13 +11,18 @@ from app.instrumentation.tracing import install_tracing
 from app.repositories.event_repo import EventRepository
 
 app = FastAPI(title="Auth + Prime API", version="1.0.0")
+logger = logging.getLogger(__name__)
 
 
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
-    clickhouse = get_clickhouse_client()
-    EventRepository(clickhouse).create_table_if_not_exists()
+    try:
+        clickhouse = get_clickhouse_client()
+        EventRepository(clickhouse).create_table_if_not_exists()
+    except Exception as exc:
+        # App remains available even if analytics store is temporarily unavailable.
+        logger.warning("ClickHouse initialization skipped: %s", exc)
 
 
 @app.get("/health")
