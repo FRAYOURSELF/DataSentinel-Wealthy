@@ -1,0 +1,41 @@
+{
+  "title": "Celery Worker Dashboard",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Queued Tasks",
+      "targets": [
+        {"expr": "celery_tasks_queued", "legendFormat": "queued"}
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Running Tasks",
+      "targets": [
+        {"expr": "celery_tasks_active", "legendFormat": "active"}
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Completed / Failed Tasks",
+      "targets": [
+        {"expr": "sum(rate(celery_tasks_success_total[5m]))", "legendFormat": "success"},
+        {"expr": "sum(rate(celery_tasks_failure_total[5m]))", "legendFormat": "failure"}
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Task Duration p95",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(celery_task_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s"
+}

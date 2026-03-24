@@ -1,0 +1,5 @@
+-r fastapi_app/requirements.txt
+-r celery_worker/requirements.txt
+pytest==8.3.2
+fakeredis==2.23.2
+setuptools>=70.0.0

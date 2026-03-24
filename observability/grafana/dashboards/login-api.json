@@ -1,0 +1,36 @@
+{
+  "title": "Login API Dashboard",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Login 2xx/4xx/5xx",
+      "targets": [
+        {"expr": "sum(rate(fastapi_http_requests_total{path=\"/login\",status=\"2xx\"}[5m]))", "legendFormat": "2xx"},
+        {"expr": "sum(rate(fastapi_http_requests_total{path=\"/login\",status=\"4xx\"}[5m]))", "legendFormat": "4xx"},
+        {"expr": "sum(rate(fastapi_http_requests_total{path=\"/login\",status=\"5xx\"}[5m]))", "legendFormat": "5xx"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Login Request Size",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(fastapi_http_request_size_bytes_bucket{path=\"/login\"}[5m])) by (le))", "legendFormat": "p95"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Login Latency (p50/p95/p99)",
+      "targets": [
+        {"expr": "histogram_quantile(0.5, sum(rate(fastapi_http_request_duration_seconds_bucket{path=\"/login\"}[5m])) by (le))", "legendFormat": "p50"},
+        {"expr": "histogram_quantile(0.95, sum(rate(fastapi_http_request_duration_seconds_bucket{path=\"/login\"}[5m])) by (le))", "legendFormat": "p95"},
+        {"expr": "histogram_quantile(0.99, sum(rate(fastapi_http_request_duration_seconds_bucket{path=\"/login\"}[5m])) by (le))", "legendFormat": "p99"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s"
+}
