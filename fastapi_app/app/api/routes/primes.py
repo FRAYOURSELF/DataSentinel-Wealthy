@@ -1,4 +1,3 @@
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from redis import Redis
 
@@ -10,6 +9,7 @@ from app.schemas.prime import (
     PrimeJobResultResponse,
     PrimeJobStatusResponse,
 )
+from app.services.prime_compute import is_prime, primes_up_to
 from app.services.prime_job_service import PrimeJobService
 
 router = APIRouter(prefix="", tags=["primes"], dependencies=[Depends(get_current_user)])
@@ -21,21 +21,18 @@ def get_redis_client() -> Redis:
 
 @router.get("/check-prime")
 async def check_prime(number: int):
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(f"{settings.go_prime_service_url}/check-prime", params={"number": number})
-    if response.status_code >= 400:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
-    return response.json()
+    if number < 0:
+        raise HTTPException(status_code=400, detail="invalid number")
+    return {"number": number, "is_prime": is_prime(number)}
 
 
 @router.get("/primes")
 async def primes(n: int):
     if n <= 200_000:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(f"{settings.go_prime_service_url}/primes", params={"n": n})
-        if response.status_code >= 400:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-        return response.json()
+        if n < 2:
+            raise HTTPException(status_code=400, detail="n must be >= 2")
+        values = primes_up_to(n)
+        return {"n": n, "count": len(values), "primes": values}
     raise HTTPException(status_code=400, detail="n too large for sync endpoint; use /prime-jobs")
 
 

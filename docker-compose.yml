@@ -23,7 +23,6 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_PORT: 8123
-      GO_PRIME_SERVICE_URL: http://go-prime-service:8080
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       JWT_SECRET_KEY: replace-with-strong-secret
       JWT_ALGORITHM: HS256
@@ -40,7 +39,6 @@ services:
     depends_on:
       - redis
       - clickhouse
-      - go-prime-service
       - otel-collector
 
   fastapi-db-init:
@@ -69,16 +67,6 @@ services:
       - clickhouse
       - otel-collector
 
-  go-prime-service:
-    build:
-      context: ./go_prime_service
-    environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
-    ports:
-      - "8080:8080"
-    depends_on:
-      - otel-collector
-
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.104.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
@@ -99,7 +87,6 @@ services:
       - "8428:8428"
     depends_on:
       - fastapi-app
-      - go-prime-service
       - celery-worker
 
   grafana:

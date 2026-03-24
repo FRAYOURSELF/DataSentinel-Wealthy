@@ -13,8 +13,6 @@ class Settings(BaseSettings):
     clickhouse_password: str = ""
     clickhouse_database: str = "default"
 
-    go_prime_service_url: str = "http://go-prime-service:8080"
-
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
 
