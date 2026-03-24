@@ -170,11 +170,6 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-## Notes
-
-- Runtime/generated folders should not be committed (`.venv`, `__pycache__`, `.local`, `access`, `preprocessed_configs`, `victoria-metrics-data`).
-- Prime async metrics for Celery are most reliable in local mode with `--pool=solo`.
-
 ## Screenshots
 
 <img width="1724" height="1082" alt="Screenshot 2026-03-24 at 2 32 24 PM" src="https://github.com/user-attachments/assets/191acbbc-45bb-4519-8521-0aa56f0157c0" />
